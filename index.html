@@ -1,0 +1,115 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+    <title>背单词</title>
+ 
+    <link rel="shortcut icon" href="favicon.ico"> <link href="css/bootstrap.min.css?v=3.3.6" rel="stylesheet">
+    <link href="css/font-awesome.css?v=4.4.0" rel="stylesheet">
+    <link href="css/plugins/blueimp/css/blueimp-gallery.min.css" rel="stylesheet">
+
+    <link href="css/animate.css" rel="stylesheet">
+    <link href="css/style.css?v=4.1.0" rel="stylesheet">
+
+    <style>
+        .words_gallery img {
+            margin: 5px;
+            width: 160px;
+        }
+    </style>
+
+</head>
+
+<body class="gray-bg">
+    <div class="wrapper wrapper-content">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="ibox float-e-margins">
+
+                    <div class="ibox-content">
+
+                        <div id="words_gallery" class="words_gallery">
+
+                            <div id="blueimp-gallery" class="blueimp-gallery">
+                                <div class="slides"></div>
+                                <h3 class="title"></h3>
+                                <a class="prev">‹</a>
+                                <a class="next">›</a>
+                                <a class="close">×</a>
+                                <a class="play-pause"></a>
+                                <ol class="indicator"></ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 全局js -->
+    <script src="js/jquery.min.js?v=2.1.4"></script>
+    <script src="js/bootstrap.min.js?v=3.3.6"></script>
+
+    <!-- blueimp gallery -->
+    <script src="js/plugins/blueimp/jquery.blueimp-gallery.min.js"></script>
+<script>
+	
+	(function(){
+			//var prefix=document.location.protocol+"/"+document.location.host+"/api"
+			//获取后台上次单词列表
+			var prefix="/api"
+			var lastword=1;
+      var dblen=5000;
+      var page = 20
+      $.ajax({url:prefix+"/get_cfg/dblen",async:false, type: "GET",success:function(data){dblen = data['dblen'];}})
+			$.ajax({url:prefix+"/get_cfg/last",async:false, type: "GET",success:function(data){lastword = data['last'];}})
+      
+			$.getJSON(prefix+"/get_list/"+lastword+"/"+page,function(data){
+				$.each(data,function(i,item){
+					var pic='<a href="/api/pic/'+item[1]+'" title="'+item[1]+'" data-gallery=""><img id="'+item[1]+'_pic" src="/api/pic/'+item[1]+'"></a>'
+          pic = $(pic)
+					$("#words_gallery").append(pic)
+					var mp3='<audio id="'+item[1]+'_mp3" src="/api/mp3/'+item[1]+'" />'
+          mp3 = $(mp3)
+					$("#words_gallery").append(mp3)
+          pic.bind('mouseenter',mp3,function(ev){
+ 			        //ev.data[0].play()
+              //console.log(ev.data[0].play);
+              ev.data[0].click()
+              ev.data[0].play()
+            });
+				});
+			})
+		
+			//panel
+			var control = '<div class="word_control"><a class="animated bounceInUp" ><i class="fa fa-backward"></i></a><a class="animated bounceInUp"><i class="fa fa-play-circle"></i></a><a><i class="fa fa-forward"><i></a></div>';
+      $('body').append($(control));
+      $(".fa-backward").bind('click',function(ev){
+        lastword = parseInt(lastword)- page;
+        if(lastword <= 0 ){
+          lastword = 1
+        }
+         $.ajax({url:prefix+"/update_cfg/last/"+lastword,type: "GET",success:function(data){ window.location = '.' ;}})
+         
+      })
+      
+        $(".fa-forward").bind('click',function(ev){
+        lastword = parseInt(lastword)+ page;
+        if(lastword > dblen){
+          lastword = 1
+        }
+         $.ajax({url:prefix+"/update_cfg/last/"+lastword,type: "GET",success:function(data){ window.location = '.' ;}})
+         
+      })
+    
+  })()
+</script>
+</body>
+
+</html>
