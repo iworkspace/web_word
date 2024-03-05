@@ -6,7 +6,6 @@ from urllib.parse import urlparse
 import json
 import re
 import sqlite3 
-from metadb import metadb 
 
 '''
     sqlite3
@@ -17,13 +16,18 @@ from metadb import metadb
 '''
 
 #import shutil
-class web_cfg(object):
+class web_words(object):
     def __init__(self,db_name="web.db"):
         sql = '''
             create table if not exists "word" (
         		"id"  INTEGER PRIMARY KEY AUTOINCREMENT,  
 				"word" VARCHAR(64) NOT NULL,
-                "verbose" BLOB
+                "units" INTEGER,
+                "phonic" VARCHAR(64),
+                "trans_han" VARCHAR(128),
+                "verbose" BLOB,
+                "pic" BLOB,
+                "snd" BLOB
 			);
             create table if not exists "cfg" (
                 "key" VARCHAR(64) PRIMARY KEY NOT NULL,
@@ -36,7 +40,39 @@ class web_cfg(object):
         self.__conn.executescript(sql);
         self['dblen']=str(len(self))
         self.__conn.commit()
- 
+
+    def load_txt(self,ori_txt="eng.txt"):
+        c = self.__conn ;
+        sql = "delete from word;update sqlite_sequence set seq =0 where name = 'web'; "
+        c.execute(sql);
+        word_units=1
+        word_units_rule=re.compile(r'Word\s+List\s+([0-9]+)')
+        word_list_rule=re.compile(r'([A-Za-z\-\ ]+)[\*]?\s+[\/\[\{]([^\/\[\{]+)[\/\]\}]\s+(.+)')
+        with open(ori_txt) as txtf:
+            lines = txtf.readlines()
+            for line in lines:
+                m = word_units_rule.match(line) 
+                if m and m.group(1):
+                    word_units = int(m.group(1))
+                    #print("get units:%d"%word_units)
+                    continue
+                m = word_list_rule.match(line)
+                if m and m.group(1):
+                    word=m.group(1).strip()
+                    #print("%d %s %s %s"%(word_units,m.group(1),m.group(2),m.group(3)));
+                    sql="insert or replace into word(units,word,phonic,trans_han,pic,snd)  values(?,?,?,?,?,?)"
+                    c.execute(sql,(word_units,word,m.group(2),m.group(3),1,1))
+        c.commit()
+    
+    def test(self):
+        for i in self:
+            id,word=i;
+            word = word.strip()
+            sql="update word set word = ? where id = ?"
+            c = self.__conn ;
+            print("id:%d word:%s->"%(id,word))
+            c.execute(sql,(word,id));
+        c.commit()
 
     def get_backlog_meta(self,dbfile="stardict.db"):
         import stardict
@@ -50,21 +86,9 @@ class web_cfg(object):
                 word = item[1]
                 words_verb = dict_backlog[word]
                 sql = "update word set verbose = ? where id = ? ;"
+                #print(json.dumps(words_verb).encode())
                 f.execute(sql,(json.dumps(words_verb).encode(),item[0]))
             c.commit()
-
-    def init_from_file(self,filelist):
-       #清空原表 
-       c = self.__conn
-       sql = "delete from word;update sqlite_sequence set seq =0 where name = 'web'; "
-       c.executescript(sql)
-       c.commit()
-       with open(filelist) as f:
-           lines = f.readlines();
-           for i in lines:
-               sql = "insert INTO word(word) values(?) "
-               c.execute(sql,(i.strip(),));
-       c.commit()
 
     def __del__(self):
         if self.__conn:
@@ -96,7 +120,7 @@ class web_cfg(object):
     def __iter__(self):
         with self.__conn as c:
             f = c.cursor();
-            sql = 'select id, word from web order by "id" '
+            sql = 'select id, word from word order by "id" '
             f.execute(sql)
             return f.__iter__()
     
@@ -107,15 +131,87 @@ class web_cfg(object):
             if isinstance(start,int):
                 sql = 'select id, word, verbose from word  where id >= ? order by "id" '
             elif isinstance(start,str):
-                sql = 'select id,word, verbose from word where id >= (select id from web where word = (?) ) order by "id" '
+                sql = 'select id,word, verbose from word where id >= (select id from word where word = (?) ) order by "id" '
             else:
                 sql = 'select id, word, verbose from word order by "id" '
             sql += 'limit ?'
             f.execute(sql,(start,limit))
             return f.__iter__()
 
-wordb = web_cfg()
-metadb = metadb()
+    def wrap(self,inq,deq):
+        while not inq.empty():
+            try:
+                func,id,word,cnt = inq.get(block=False)
+                if not func:
+                    return
+                r = func(word) 
+                deq.put(("OK",id,word,r))
+            except Exception as e:
+                deq.put(("ERR",id,word,cnt+1))
+
+    def query_pic(self,key):
+        c = self.__conn.cursor()
+        c.execute("select pic from word where word = ?",(key,))
+        data = c.fetchone()
+        return data
+    
+    def update_pic(self,key,pic):
+        c = self.__conn.cursor()
+        c.execute("insert or replace into word(word,pic) values(?,?); ",(key,pic))
+        self.__con.commit()
+    
+    def query_sound(self,key):
+        c = self.__conn.cursor()
+        c.execute("select snd from word where word = ?",(key,))
+        data = c.fetchone()
+        return data
+    
+    def update_sound(self,key,sound):
+        c = self.__conn.cursor()
+        c.execute("insert or replace into word(word,snd) values(?,?); ",(key,sound))
+        self.__conn.commit()		
+	
+    def netspider(self):
+        import  queue
+        import netspider as spider
+        inq = queue.Queue(len(self))
+        deq = queue.Queue(len(self))
+        with self.__conn as c:
+            f = c.cursor();
+            for pre in ['snd','pic']:
+                for i in range(1,4):
+                    sql = 'select id,word from word where %s_cnt = ? '%(pre)
+                    f.execute(sql,(i,))
+                    for item in f.fetchall():
+                        id,word=item
+                        if pre == 'snd':
+                            inq.put(( spider.get_sound,id,word,i))
+                        else:
+                            inq.put(( spider.get_pic,id,word,i))
+                    
+                    threads = []
+                    from threading import Thread
+                    for j in range(1,20):
+                       t = Thread(target=self.wrap,args=(inq,deq))
+                       t.start()
+                       threads.append(t)
+
+                    for t in threads:
+                        t.join()
+                    
+                    while not deq.empty():
+                        status,id,word,snd = deq.get(block=False)
+                        if status == "OK":
+                            sql = 'update word set %s = ? , %s_cnt= ? where id = ? '%(pre,pre)
+                            f.execute(sql,(snd,0,id))
+                            print("success update %s %s "%(pre,word))
+                        else:
+                            sql = 'update word set  %s_cnt= ? where id = ? '%(pre)
+                            f.execute(sql,(snd+1,id))
+                            print("fail update %s %s->%d "%(pre,word,snd+1))
+                    c.commit()
+
+meta = web_words()
 
 #class http_request_handler(BaseHTTPRequestHandler):
 class http_request_handler(SimpleHTTPRequestHandler):
@@ -146,10 +242,10 @@ class http_request_handler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type','application/json')
         self.end_headers()
-        self.wfile.write(json.dumps({ra[0]:wordb[ra[0]]} ).encode()) 
+        self.wfile.write(json.dumps({ra[0]:meta[ra[0]]} ).encode()) 
 
     def do_api_set_cfg(self,ra):
-        wordb[ra[0]]=str(ra[1])
+        meta[ra[0]]=str(ra[1])
         self.send_response(200)
         self.send_header('Content-type','application/json')
         self.end_headers()
@@ -161,10 +257,9 @@ class http_request_handler(SimpleHTTPRequestHandler):
         self.end_headers()
         last=int(ra[0])
         limit=int(ra[1])
-        wlist = [ [x[0],x[1],json.loads(x[2])] for x in wordb.next(last,limit) ] 
+        wlist = [ [x[0],x[1],json.loads(x[2])] for x in meta.next(last,limit) ] 
         self.wfile.write(json.dumps(wlist).encode()) 
-    
-
+	
 
     def do_api_handler(self,ra):
         #获取参数至字典
@@ -173,14 +268,14 @@ class http_request_handler(SimpleHTTPRequestHandler):
         word = ra[1]
         if sub == 'mp3' :
             print("query mp3")
-            snd=metadb.query_sound(word);
+            snd=meta.query_sound(word);
             self.send_response(200)
             self.send_header('Content-type','application/octet-stream')
             self.end_headers()
             self.wfile.write(snd[0]) 
         elif sub == 'pic' :
             print("query pic")
-            pic=metadb.query_pic(word);
+            pic=meta.query_pic(word);
             self.send_response(200)
             self.send_header('Content-type','image/jpeg')
             self.end_headers()
@@ -195,8 +290,10 @@ class http_request_handler(SimpleHTTPRequestHandler):
             pass
 
 if __name__ == '__main__1':
-    #wordb.init_from_file('5000.rand')
-    wordb.get_backlog_meta("stardict.db")
+    #meta.init_from_file('5000.rand')
+    #meta.load_txt("IELTS Word List.txt")
+    #meta.get_backlog_meta();
+    meta.netspider()
 
 if __name__ == '__main__':
     http_bind = ("0.0.0.0",8888)

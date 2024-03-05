@@ -106,7 +106,7 @@
 				$.each(data,function(i,item){
 					//console.log(item)
 					var pic='<a href="/api/pic/'+item[1]+'" title="'+item[1]+" /"+item[2].phonetic+"/ &#10;&#13;"+item[2].definition+'" data-gallery=""><img id="'+item[1]+'_pic" src="/api/pic/'+item[1]+'"></a>'
-          pic = $(pic)
+					pic = $(pic)
 					$("#words_gallery").append(pic)
 					var mp3='<audio id="'+item[1]+'_mp3" src="/api/mp3/'+item[1]+'" />'
           mp3 = $(mp3)
