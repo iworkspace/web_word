@@ -100,7 +100,10 @@
 			var lastword=1;
       var dblen=5000;
       var page = 20
+      var poll_time = 10000;
       $.ajax({url:prefix+"/get_cfg/dblen",async:false, type: "GET",success:function(data){dblen = data['dblen'];}})
+      $.ajax({url:prefix+"/get_cfg/page",async:false, type: "GET",success:function(data){page = data['page'];}})
+      $.ajax({url:prefix+"/get_cfg/poll_time",async:false, type: "GET",success:function(data){poll_time = data['poll_time'];}})
 			$.ajax({url:prefix+"/get_cfg/last",async:false, type: "GET",success:function(data){lastword = data['last'];}}) 
 			$.getJSON(prefix+"/get_list/"+lastword+"/"+page,function(data){
 				$.each(data,function(i,item){
@@ -124,7 +127,7 @@
 			var control = '<div class="word_control"><a class="animated bounceInUp" ><i class="fa fa-backward"></i></a><a class="animated bounceInUp"><i class="fa fa-play-circle"></i></a><a><i class="fa fa-forward"><i></a></div>';
       $('body').append($(control));
       $(".fa-backward").bind('click',function(ev){
-        lastword = parseInt(lastword)- page;
+        lastword = parseInt(lastword)- parseInt(page);
         if(lastword <= 0 ){
           lastword = 1
         }
@@ -133,7 +136,7 @@
       })
       
         $(".fa-forward").bind('click',function(ev){
-        lastword = parseInt(lastword)+ page;
+        lastword = parseInt(lastword)+  parseInt(page);
         if(lastword > dblen){
           lastword = 1
         }
@@ -162,7 +165,7 @@
 		return
 	}
 	$("title").addClass('.rainblow_tips_static');
-	setInterval(auto_next,5000);
+	setInterval(auto_next,poll_time);
       })
 	$("")
     
