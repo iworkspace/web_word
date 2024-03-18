@@ -120,7 +120,12 @@
               ev.data[0].click()
               ev.data[0].play()
             });
-				});
+		pic.bind('contextmenu',item[1],function(ev){
+              //console.log(ev);
+		ev.preventDefault();
+		window.open("https://cn.bing.com/images/search?q="+ev.data);
+            });
+		});
 			})
 		
 			//panel
